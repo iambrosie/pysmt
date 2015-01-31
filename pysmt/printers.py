@@ -356,3 +356,62 @@ class HRSerializer(object):
         res = buf.getvalue()
         buf.close()
         return res
+
+class SmartPrinter(HRPrinter):
+
+    def __init__(self, stream, useBytes=False, smarties=None):
+        HRPrinter.__init__(self, stream, useBytes)
+        if smarties is not None:
+            self.smarties = smarties
+        else:
+            self.smarties = {}
+        return
+
+    def printer(self, f, threshold=None):
+        oldvalues = (self.threshold_cnt, self.smarties)
+
+        if threshold is not None:
+            self.threshold_cnt = threshold
+        self.walk(f)
+        self.threshold_cnt, self.smarties = oldvalues
+        return
+
+    def walk(self, formula):
+        """ Generic walk method, will apply the function defined by the map
+        self.functions.
+        """
+        if self.smart_walk(formula):
+            return
+
+        if self.threshold_cnt == 0:
+            self.walk_threshold(formula)
+            return
+        if self.threshold_cnt >= 0: self.threshold_cnt -= 1
+
+        try:
+            f = self.functions[formula.node_type()]
+        except KeyError:
+            f = self.walk_error
+
+        f(formula) # Apply the function to the formula
+
+        if self.threshold_cnt >= 0: self.threshold_cnt += 1
+        return
+
+    def smart_walk(self, formula):
+        # This is callsed smart_walk because it could be generalized.
+        # For now we allow only custom strings to be printed, but
+        # smarties could be a mapping to functions to be called.
+        if formula not in self.smarties:
+            return False
+        else:
+            self.stream.write(self.tb(self.smarties[formula]))
+            return True
+
+def smart_serialize(formula, smarties=None, threshold=None):
+    buf = get_io_buffer()
+    p = SmartPrinter(buf, useBytes=False, smarties=smarties)
+    p.printer(formula, threshold=threshold)
+    res = buf.getvalue()
+    buf.close()
+    return res

@@ -25,6 +25,7 @@ from pysmt.shortcuts import Bool, Real, Int, Symbol, Function
 from pysmt.shortcuts import Times, Minus, Equals, LE, LT, ToReal
 from pysmt.typing import REAL, INT, FunctionType
 from pysmt.smtlib.printers import SmtPrinter, SmtDagPrinter
+from pysmt.printers import smart_serialize
 from pysmt.test import TestCase
 from pysmt.test.examples import get_example_formulae
 
@@ -173,6 +174,17 @@ class TestPrinting(TestCase):
         for (f, _, _, _) in get_example_formulae():
             self.assertTrue(len(str(f)) >= 1, str(f))
 
+    def test_smart_serialize(self):
+        x, y = Symbol("x"), Symbol("y")
+        f1 = And(x,y)
+        f = Implies(x, f1)
+        smarties = {f1: "f1"}  # Mapping FNode -> String
+        res = smart_serialize(f, smarties=smarties)
+        self.assertEquals("(x -> f1)", res)
+
+        res = smart_serialize(f)
+        self.assertIsNotNone(res)
+        self.assertEquals(str(f), res)
 
 if __name__ == '__main__':
     unittest.main()
