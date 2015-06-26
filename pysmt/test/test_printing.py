@@ -15,12 +15,12 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-from six.moves import cStringIO
 import unittest
+from six.moves import cStringIO
 from six.moves import xrange
 
 from pysmt.shortcuts import Or, And, Not, Plus, Iff, Implies
-from pysmt.shortcuts import Exists, ForAll, Ite
+from pysmt.shortcuts import Exists, ForAll, Ite, ExactlyOne
 from pysmt.shortcuts import Bool, Real, Int, Symbol, Function
 from pysmt.shortcuts import Times, Minus, Equals, LE, LT, ToReal
 from pysmt.typing import REAL, INT, FunctionType
@@ -182,9 +182,20 @@ class TestPrinting(TestCase):
         res = smart_serialize(f, smarties=smarties)
         self.assertEquals("(x -> f1)", res)
 
+        # If no smarties are provided, the printing is compatible
+        # with standard one
         res = smart_serialize(f)
         self.assertIsNotNone(res)
         self.assertEquals(str(f), res)
+
+        fvars = [Symbol("x%d" % i) for i in xrange(5)]
+        ex = ExactlyOne(fvars)
+        smarties = {ex: "ExactlyOne(%s)" % ",".join(str(v) for v in fvars)}
+        old_str = ex.serialize()
+        smart_str = smart_serialize(ex, smarties=smarties)
+        self.assertTrue(len(old_str) > len(smart_str))
+        self.assertEquals("ExactlyOne(x0,x1,x2,x3,x4)", smart_str)
+
 
 if __name__ == '__main__':
     unittest.main()
