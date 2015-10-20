@@ -247,7 +247,7 @@ def install_z3(options):
 
     unzip(archive, install_path)
     # THIS needs to be updated
-    PATHS.append("%s/lib/python2.7/dist-packages" % install_path)
+    PATHS.append("%s/%s/bin/" % (install_path, base_name))
     return
 
 
