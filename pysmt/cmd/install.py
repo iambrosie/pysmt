@@ -18,6 +18,7 @@ from six.moves import input
 import os
 import tarfile
 import sys
+import sysconfig
 import platform
 import zipfile
 import argparse
@@ -93,6 +94,13 @@ def get_boolector_download_link(archive_name):
 ################################################################################
 # Utility functions
 
+def distutils_dir_name(dname):
+    """Returns the name of a distutils build directory"""
+    f = "{dirname}.{platform}-{version[0]}.{version[1]}"
+    return f.format(dirname=dname,
+                    platform=sysconfig.get_platform(),
+                    version=sys.version_info)
+
 def get_architecture_bits():
     """Returns the native word width of this architecture. E.g. 32 or 64"""
     is_64bits = sys.maxsize > 2**32
@@ -161,6 +169,8 @@ def install_msat(options):
     """Installer for the MathSAT5 solver python interafce"""
 
     base_name =  "mathsat-5.3.8-linux-%s" % get_architecture()
+    if sysconfig.get_platform().startswith("macosx"):
+        base_name =  "mathsat-5.3.8-darwin-libcxx-%s" % get_architecture()
     archive_name = "%s.tar.gz" % base_name
     archive = os.path.join(BASE_DIR, archive_name)
     dir_path = os.path.join(BASE_DIR, base_name)
@@ -181,7 +191,7 @@ def install_msat(options):
 
     # Save the paths
     PATHS.append("%s/python" % dir_path)
-    PATHS.append("%s/python/build/lib.linux-%s-%s" % (dir_path, get_architecture(), get_python_version()))
+    PATHS.append("%s/python/build/%s" % (dir_path, distutils_dir_name("lib")))
 
 
 def install_z3(options):
@@ -331,7 +341,7 @@ def install_yices(options):
     os.system("export YICES_PATH=\"%s\"; cd %s; python setup.py install --user" % (yices_path, pyices_dir_path))
 
     # Save the paths
-    PATHS.append("%s/build/lib.linux-%s-%s" % (pyices_dir_path, get_architecture(), get_python_version()))
+    PATHS.append("%s/build/%s" % (pyices_dir_path, distutils_dir_name("lib")))
 
 
 def install_pycudd(options):
@@ -403,7 +413,7 @@ def install_picosat(options):
 
     # Save the paths
     PATHS.append("%s" % dir_path)
-    PATHS.append("%s/build/lib.linux-%s-%s" % (dir_path, get_architecture(), get_python_version()))
+    PATHS.append("%s/build/%s" % (dir_path, distutils_dir_name("lib")))
 
 
 def install_boolector(options):
