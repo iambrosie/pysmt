@@ -61,6 +61,11 @@ def get_z3_download_link(git_version):
         return mirror + ("/z3-%s.zip" % git_version)
     return "http://download-codeplex.sec.s-msft.com/Download/SourceControlFileDownload.ashx?ProjectName=z3&changeSetId=%s" % git_version
 
+def get_z3_github_download_link(archive_name):
+    if mirror is not None:
+        return mirror + "/" + archive_name
+    return "https://github.com/Z3Prover/bin/raw/master/releases/%s" % archive_name
+
 def get_cvc4_download_link(git_version):
     if mirror is not None:
         return mirror + ("/cvc4-%s.tar.gz" % git_version)
@@ -117,6 +122,17 @@ def get_architecture():
     """Returns the short name of the architecture in use. E.g. 'x86_64'"""
     return platform.machine()
 
+def get_platform():
+    """Returns the short name of the platform: linux, osx, win"""
+    if sysconfig.get_platform().startswith("macosx"):
+        return "osx"
+    elif sysconfig.get_platform().startswith("linux"):
+        return "linux"
+    elif sysconfig.get_platform().startswith("win"):
+        return "win"
+    else:
+        print("Unrecognized platform: %s", sysconfig.get_platform())
+
 def untar(fname, directory=".", mode='r:gz'):
     """Extracts the tarfile using the specified mode in the given directory."""
     tfile = tarfile.open(fname, mode)
@@ -134,6 +150,7 @@ def download_patch(name, target):
 
 def download(url, file_name):
     """Downloads the given url into the given file name"""
+    print(url)
     u = urllib2.urlopen(url)
     f = open(file_name, 'wb')
     meta = u.info()
@@ -168,10 +185,17 @@ def download(url, file_name):
 def install_msat(options):
     """Installer for the MathSAT5 solver python interafce"""
 
-    base_name =  "mathsat-5.3.8-linux-%s" % get_architecture()
-    if sysconfig.get_platform().startswith("macosx"):
+    if get_platform() == "linux":
+        base_name =  "mathsat-5.3.8-linux-%s" % get_architecture()
+        archive_name = "%s.tar.gz" % base_name
+    elif get_platform() == "osx":
         base_name =  "mathsat-5.3.8-darwin-libcxx-%s" % get_architecture()
-    archive_name = "%s.tar.gz" % base_name
+        archive_name = "%s.tar.gz" % base_name
+    else:
+        assert get_platform() == "win"
+        base_name = "mathsat-5.3.8-win%s-msvc" % get_architecture()
+        archive_name = "%s.zip" % base_name
+
     archive = os.path.join(BASE_DIR, archive_name)
     dir_path = os.path.join(BASE_DIR, base_name)
 
@@ -195,6 +219,39 @@ def install_msat(options):
 
 
 def install_z3(options):
+    """Installer for the Z3 solver python interafce"""
+    arch = get_architecture()
+    if arch == "x86_64": arch = "x64"
+
+    if get_platform() == "linux":
+        # TODO: Check for ubuntu
+        base_name =  "z3-4.4.1-%s-debian-8.2" % arch
+    elif get_platform() == "osx":
+        base_name =  "z3-4.4.1-%s-osx-10.11" % arch
+    else:
+        assert get_platform() == "win"
+        base_name = "z3-4.4.1-%s-win" % arch
+
+    archive_name = "%s.zip" % base_name
+    archive = os.path.join(BASE_DIR, archive_name)
+    dir_path = os.path.join(BASE_DIR, base_name)
+    install_path = os.path.join(BASE_DIR, "z3_bin")
+
+    if not os.path.exists(archive):
+        print(archive_name)
+        download(get_z3_github_download_link(archive_name), archive)
+
+    # Clear the destination directory, if any
+    if os.path.exists(dir_path):
+        os.system("rm -rf %s" % dir_path)
+
+    unzip(archive, install_path)
+    # THIS needs to be updated
+    PATHS.append("%s/lib/python2.7/dist-packages" % install_path)
+    return
+
+
+def install_z3_old(options):
     """Installer for the Z3 solver python interafce"""
 
     git = "cee7dd39444c9060186df79c2a2c7f8845de415b"

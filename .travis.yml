@@ -6,7 +6,7 @@ language: objective-c
 env:
   matrix:
     - PYSMT_SOLVER="None" PYTHON_VERSION="2.7"
-#    - PYSMT_SOLVER="z3" PYTHON_VERSION="2.7"
+    - PYSMT_SOLVER="z3" PYTHON_VERSION="2.7"
     - PYSMT_SOLVER="None" PYTHON_VERSION="3.4"
 #    - PYSMT_SOLVER="z3" PYTHON_VERSION="3.4
 
@@ -31,4 +31,4 @@ script:
   - if [ ${PYTHON_VERSION} == "2.7" ]; then nosetests pysmt;  fi
   # 3.4
   - if [ ${PYTHON_VERSION} == "3.4" ]; then python3 install.py --check;  fi
-  - if [ ${PYTHON_VERSION} == "3.4" ]; then nosetests3 pysmt;  fi
+  - if [ ${PYTHON_VERSION} == "3.4" ]; then nosetests pysmt;  fi
