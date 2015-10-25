@@ -31,6 +31,7 @@ from pysmt.smtlib.script import SmtLibCommand, SmtLibScript
 from pysmt.smtlib.annotations import Annotations
 from pysmt.utils import interactive_char_iterator
 
+
 def get_formula(script_stream, environment=None):
     """
     Returns the formula asserted at the end of the given script

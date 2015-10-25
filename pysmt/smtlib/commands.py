@@ -30,7 +30,27 @@ DECLARE_CONST='declare-const'
 DEFINE_FUN='define-fun'
 PUSH='push'
 POP='pop'
+# 2.5
+RESET='reset'
+RESET_ASSERTIONS='reset-assertions'
+CHECK_SAT_ASSUMING='check-sat-assuming'
+GET_UNSAT_ASSUMPTION='get-unsat-assumption'
+ECHO='echo'
+DEFINE_FUN_REC='define-fun-rec',
+DEFINE_FUNS_REC='define-funs-rec'
+GET_MODEL='get-model'
 
+# These commands were introduced in SMT-LIB 2.5
+COMMANDS_2_5 = [
+    RESET,
+    RESET_ASSERTIONS,
+    CHECK_SAT_ASSUMING,
+    GET_UNSAT_ASSUMPTION,
+    ECHO,
+    DEFINE_FUN_REC,
+    DEFINE_FUNS_REC,
+    GET_MODEL,
+]
 
 ALL_COMMANDS = [
     SET_INFO,
@@ -46,4 +66,4 @@ ALL_COMMANDS = [
     DEFINE_FUN,
     PUSH,
     POP,
-]
+] + COMMANDS_2_5

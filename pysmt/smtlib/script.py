@@ -23,11 +23,11 @@ import pysmt.smtlib.commands as smtcmd
 from pysmt.exceptions import UnknownSmtLibCommandError
 from pysmt.shortcuts import And
 from pysmt.smtlib.printers import SmtPrinter, SmtDagPrinter, quote
-from pysmt.logics import UFLIRA
+from pysmt.oracles import get_logic
+
 
 def check_sat_filter(log):
-    """
-    Returns the result of the check-sat command from a log.
+    """Returns the result of the check-sat command from a log.
 
     Raises errors in case a unique check-sat command cannot be located.
     """
@@ -37,6 +37,11 @@ def check_sat_filter(log):
 
 
 class SmtLibCommand(namedtuple('SmtLibCommand', ['name', 'args'])):
+    """Simple class representing a command from SMT-LIB standard.
+
+    Instances of this class are created by the parser.
+    """
+
     def serialize(self, outstream=None, printer=None, daggify=False):
         """Serializes the SmtLibCommand into outstream using the given printer.
 
@@ -45,7 +50,6 @@ class SmtLibCommand(namedtuple('SmtLibCommand', ['name', 'args'])):
         If printer is not specified, daggify controls the printer to
         be created. If true a daggified formula is produced, otherwise
         a tree printing is done.
-
         """
 
         if (outstream is None) and (printer is not None):
@@ -104,6 +108,10 @@ class SmtLibCommand(namedtuple('SmtLibCommand', ['name', 'args'])):
 
 
 class SmtLibScript(object):
+    """Represents a sequence of SMT-LIB commands.
+
+    This is the result of parsing an SMT-LIB file.
+    """
 
     def __init__(self):
         self.annotations = None
@@ -196,10 +204,12 @@ class SmtLibScript(object):
 
 
 def smtlibscript_from_formula(formula):
-    script = SmtLibScript()
+    """Create a minimal SMT-LIB script for the given formula."""
 
+    script = SmtLibScript()
+    logic = get_logic(formula)
     script.add(name=smtcmd.SET_LOGIC,
-               args=[UFLIRA])
+               args=[logic])
 
     deps = formula.get_free_variables()
     # Declare all variables
@@ -216,7 +226,10 @@ def smtlibscript_from_formula(formula):
 
     return script
 
+
 def evaluate_command(cmd, solver):
+    """Apply the SMT-LIB command on the given Solver."""
+
     if cmd.name == smtcmd.SET_INFO:
         return solver.set_info(cmd.args[0], cmd.args[1])
 
