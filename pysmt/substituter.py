@@ -15,8 +15,6 @@
 #   See the License for the specific language governing permissions and
 #   limitations under the License.
 #
-import warnings
-
 from six import iteritems
 
 import pysmt.walkers
@@ -51,8 +49,6 @@ class Substituter(pysmt.walkers.DagWalker):
     substitutions in which both x and Not(x) appear, do not work as
     expected.  In case of doubt, it is recommended to issue two
     separate calls to the substitution procedure.
-
-    Quantifiers: ???
 
     """
     def __init__(self, env):
@@ -162,13 +158,6 @@ class MSSubstituter(Substituter):
         Substituter.__init__(self, env=env)
         self.set_function(self.walk_identity, op.SYMBOL, op.REAL_CONSTANT,
                           op.INT_CONSTANT, op.BOOL_CONSTANT, op.BV_CONSTANT)
-
-    def substitute(self, formula, subs):
-        warnings.warn("MSSSubstituter will be deprecated in version 0.5\n"+\
-                      "You should test your code with pysmt.substituter.MGSSubstituter.",
-                      category=DeprecationWarning,
-                      stacklevel=2)
-        return Substituter.substitute(self, formula, subs)
 
     def _get_key(self, formula, **kwargs):
         return formula
