@@ -34,9 +34,8 @@ from pysmt.oracles import get_logic
 import pysmt.operators as op
 from pysmt import typing as types
 from pysmt.solvers.solver import (IncrementalTrackingSolver, UnsatCoreSolver,
-                                  Converter)
+                                  Model, Converter)
 from pysmt.solvers.smtlib import SmtLibBasicSolver, SmtLibIgnoreMixin
-from pysmt.solvers.eager import EagerModel
 from pysmt.walkers import DagWalker
 from pysmt.exceptions import (SolverReturnedUnknownResultError,
                               SolverNotConfiguredForUnsatCoresError,
@@ -46,6 +45,94 @@ from pysmt.decorators import clear_pending_pop, catch_conversion_error
 from pysmt.solvers.qelim import QuantifierEliminator
 from pysmt.solvers.interpolation import Interpolator
 from pysmt.walkers.identitydag import IdentityDagWalker
+
+
+class MSatEnv(object):
+    """A simple wrapper for the msat_env object"""
+
+    __slots__ = ['msat_env', 'msat_config']
+
+    def __init__(self, msat_config=None):
+        self.msat_config = msat_config
+        if msat_config is None:
+            self.msat_env = mathsat.msat_create_env()
+        else:
+            self.msat_env = mathsat.msat_create_env(self.msat_config)
+
+    def __del__(self):
+        mathsat.msat_destroy_env(self.msat_env)
+        mathsat.msat_destroy_config(self.msat_config)
+
+    def __call__(self):
+        return self.msat_env
+
+
+class MSatEnvMixin():
+    def __init__(self, msat_env):
+        self._msat_env = msat_env
+
+    @property
+    def msat_env(self):
+        return self._msat_env()
+
+
+class MathSAT5Model(Model, MSatEnvMixin):
+    """Stand-alone model"""
+
+    def __init__(self, environment, msat_env):
+        Model.__init__(self, environment)
+        MSatEnvMixin.__init__(self, msat_env)
+        self.converter = MSatConverter(environment, self.msat_env)
+        self.msat_model = None
+        msat_model = mathsat.msat_get_model(self.msat_env)
+        if mathsat.MSAT_ERROR_MODEL(msat_model):
+            msat_msg = mathsat.msat_last_error_message(self.msat_env)
+            raise InternalSolverError(msat_msg)
+        self.msat_model = msat_model
+
+    def __del__(self):
+        if self.msat_model is not None:
+            mathsat.msat_destroy_model(self.msat_model)
+
+    def get_value(self, formula, model_completion=True):
+        titem = self.converter.convert(formula)
+        msat_res = mathsat.msat_model_eval(self.msat_model, titem)
+        if mathsat.MSAT_ERROR_TERM(msat_res):
+            raise InternalSolverError("get model value")
+        val = self.converter.back(msat_res)
+        if self.environment.stc.get_type(formula).is_real_type() and \
+               val.is_int_constant():
+            val = self.environment.formula_manager.Real(val.constant_value())
+        return val
+
+    def iterator_over(self, language):
+        for x in language:
+            yield x, self.get_value(x, model_completion=True)
+
+    def __iter__(self):
+        """Overloading of iterator from Model.  We iterate only on the
+        variables defined in the assignment.
+        """
+        it = mathsat.msat_model_create_iterator(self.msat_model)
+        if mathsat.MSAT_ERROR_MODEL_ITERATOR(it):
+            raise InternalSolverError("model iteration")
+
+        while mathsat.msat_model_iterator_has_next(it):
+            t, v = mathsat.msat_model_iterator_next(it)
+            if mathsat.msat_term_is_constant(self.msat_env, t):
+                pt = self.converter.back(t)
+                pv = self.converter.back(v)
+                if self.environment.stc.get_type(pt).is_real_type() and \
+                       pv.is_int_constant():
+                    pv = self.environment.formula_manager.Real(
+                        pv.constant_value())
+                yield (pt, pv)
+
+        mathsat.msat_destroy_model_iterator(it)
+
+    def __contains__(self, x):
+        """Returns whether the model contains a value for 'x'."""
+        return x in (v for v, _ in self)
 
 
 class MathSAT5Solver(IncrementalTrackingSolver, UnsatCoreSolver,
@@ -61,7 +148,7 @@ class MathSAT5Solver(IncrementalTrackingSolver, UnsatCoreSolver,
 
         self.msat_config = mathsat.msat_create_default_config(str(logic))
         self._prepare_config(self.options, debugFile)
-        self.msat_env = mathsat.msat_create_env(self.msat_config)
+        self._msat_env = MSatEnv(self.msat_config)
 
         self.realType = mathsat.msat_get_rational_type(self.msat_env)
         self.intType = mathsat.msat_get_integer_type(self.msat_env)
@@ -71,6 +158,9 @@ class MathSAT5Solver(IncrementalTrackingSolver, UnsatCoreSolver,
         self.converter = MSatConverter(environment, self.msat_env)
         return
 
+    @property
+    def msat_env(self):
+        return self._msat_env
 
     def _prepare_config(self, options, debugFile=None):
         """Sets the relevant options in self.msat_config"""
@@ -272,49 +362,19 @@ class MathSAT5Solver(IncrementalTrackingSolver, UnsatCoreSolver,
 
         titem = self.converter.convert(item)
         tval = mathsat.msat_get_model_value(self.msat_env, titem)
-
-        if mathsat.msat_term_is_number(self.msat_env, tval):
-            rep = mathsat.msat_term_repr(tval)
-            if self.environment.stc.get_type(item).is_real_type():
-                match = re.match(r"(-?\d+)/(\d+)", rep)
-                if match is not None:
-                    return self.mgr.Real((int(match.group(1)),
-                                          int(match.group(2))))
-                else:
-                    return self.mgr.Real(int(rep))
-            elif self.environment.stc.get_type(item).is_int_type():
-                return self.mgr.Int(int(rep))
-            else:
-                assert self.environment.stc.get_type(item).is_bv_type()
-                # MathSAT representation is <value>_<width>
-                value, width = rep.split("_")
-                return self.mgr.BV(int(value), int(width))
-
-        else:
-            assert mathsat.msat_term_is_true(self.msat_env, tval) or \
-                mathsat.msat_term_is_false(self.msat_env, tval)
-            bval = (mathsat.msat_term_is_true(self.msat_env, tval) == 1)
-            return self.mgr.Bool(bval)
+        val = self.converter.back(tval)
+        if self.environment.stc.get_type(item).is_real_type() and \
+               val.is_int_constant():
+            val = self.mgr.Real(val.constant_value())
+        return val
 
     def get_model(self):
-        assignment = {}
-        msat_iterator = mathsat.msat_create_model_iterator(self.msat_env)
-        while mathsat.msat_model_iterator_has_next(msat_iterator):
-            term, value = mathsat.msat_model_iterator_next(msat_iterator)
-            pysmt_term = self.converter.back(term)
-            pysmt_value = self.converter.back(value)
-            if self.environment.stc.get_type(pysmt_term).is_real_type() and \
-               pysmt_value.is_int_constant():
-                pysmt_value = self.mgr.Real(pysmt_value.constant_value())
-            assignment[pysmt_term] = pysmt_value
-        mathsat.msat_destroy_model_iterator(msat_iterator)
-        return EagerModel(assignment=assignment, environment=self.environment)
-
+        return MathSAT5Model(self.environment, self.msat_env_wrapper.ref())
 
     def exit(self):
         if not self._destroyed:
             self._destroyed = True
-            mathsat.msat_destroy_env(self.msat_env)
+            self.msat_env_wrapper.unref()
             mathsat.msat_destroy_config(self.msat_config)
 
 
@@ -999,7 +1059,7 @@ class MSatConverter(Converter, DagWalker):
 
 # Check if we are working on a version MathSAT supporting quantifier elimination
 if hasattr(mathsat, "MSAT_EXIST_ELIM_ALLSMT_FM"):
-    class MSatQuantifierEliminator(QuantifierEliminator, IdentityDagWalker):
+    class MSatQuantifierEliminator(QuantifierEliminator, IdentityDagWalker, MSatEnvMixin):
 
         LOGICS = [LRA]
 
@@ -1008,17 +1068,14 @@ if hasattr(mathsat, "MSAT_EXIST_ELIM_ALLSMT_FM"):
                Loos-Weisspfenning)"""
 
             IdentityDagWalker.__init__(self, env=environment)
+            self.msat_config = mathsat.msat_create_default_config("QF_LRA")
+            MSatEnvMixin.__init__(self, MSatEnv(self.msat_config))
 
             self.set_function(self.walk_identity, op.SYMBOL, op.REAL_CONSTANT,
                               op.BOOL_CONSTANT, op.INT_CONSTANT)
-
             self.logic = logic
-
             assert algorithm in ['fm', 'lw']
             self.algorithm = algorithm
-
-            self.msat_config = mathsat.msat_create_default_config("QF_LRA")
-            self.msat_env = mathsat.msat_create_env(self.msat_config)
             self.converter = MSatConverter(environment, self.msat_env)
             self._destroyed = False
 
@@ -1082,20 +1139,15 @@ if hasattr(mathsat, "MSAT_EXIST_ELIM_ALLSMT_FM"):
                                               logic=logic, algorithm='lw')
 
 
-class MSatInterpolator(Interpolator):
+class MSatInterpolator(Interpolator, MSatEnvMixin):
 
     LOGICS = [QF_UFLIA, QF_UFLRA, QF_BV]
 
     def __init__(self, environment, logic=None):
-        self.msat_env = mathsat.msat_create_env()
+        MSatEnvMixin.__init__(self, MSatEnv())
         self.converter = MSatConverter(environment, self.msat_env)
         self.environment = environment
         self.logic = logic
-
-
-    def __del__(self):
-        mathsat.msat_destroy_env(self.msat_env)
-
 
     def _check_logic(self, formulas):
         for f in formulas:
@@ -1106,13 +1158,11 @@ class MSatInterpolator(Interpolator):
                     "Logic not supported by MathSAT interpolation."
                     "(detected logic is: %s)" % str(logic))
 
-
     def binary_interpolant(self, a, b):
         res = self.sequence_interpolant([a, b])
         if res is not None:
             res = res[0]
         return res
-
 
     def sequence_interpolant(self, formulas):
         cfg, env = None, None
